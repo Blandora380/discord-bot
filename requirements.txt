@@ -5,3 +5,4 @@ yt-dlp
 python-dotenv
 google-genai
 pykakasi
+rapidfuzz
