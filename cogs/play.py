@@ -6,7 +6,8 @@ from discord.ext import commands
 YTDL_OPTIONS = {
     "format": "bestaudio/best",
     "noplaylist": True,
-    "quiet": True,
+    "quiet": False,
+    "verbose": True,
     "default_search": "ytsearch",
     "source_address": "0.0.0.0",
     "cookiefile": "cookies.txt",
@@ -20,6 +21,11 @@ FFMPEG_OPTIONS = {
 
 # 1.0 = normal, 1.5 = 150%, 2.0 = 200%, etc.
 VOLUME = 1.5
+
+print("yt-dlp:", yt_dlp.version.__version__)
+
+import shutil
+print("deno:", shutil.which("deno"))
 
 ytdl = yt_dlp.YoutubeDL(YTDL_OPTIONS)
 
