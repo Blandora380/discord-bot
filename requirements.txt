@@ -1,7 +1,8 @@
 discord.py
 requests
 PyNaCl
-yt-dlp
+yt-dlp[default]
+yt-dlp-ejs
 python-dotenv
 google-genai
 pykakasi
