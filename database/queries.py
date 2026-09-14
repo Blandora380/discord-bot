@@ -1,0 +1,358 @@
+import json
+from typing import Any
+
+import asyncpg
+
+SETTING_DEFAULTS: dict[str, Any] = {
+    "default_language": "eng",  # eng/jpn/kor/cht/chs/ind
+    "default_region": "us",  # event region us/as/jp
+    "default_difficulty": "expert",  # easy/normal/hard/expert
+    "mirror_charts_by_default": False,
+    "timezone": "et",
+    "first_time_guess_end": True,
+}
+
+GUESS_DEFAULT = {"fail": 0, "success": 0, "ragequit": 0, "hint": 0}
+
+GUESS_LEADERBOARD_PER_PAGE = 20
+
+
+class UserData:
+    def __init__(self, pool: asyncpg.Pool) -> None:
+        self.db = pool
+
+    async def verify_discord_user(self, user_id: int) -> None:
+        async with self.db.acquire() as conn:
+            row = await conn.fetchrow("SELECT 1 FROM users WHERE discord_id = $1", user_id)
+            if not row:
+                await conn.execute("INSERT INTO users (discord_id) VALUES ($1)", user_id)
+
+    async def verify_discord_guild(self, guild_id: int) -> None:
+        async with self.db.acquire() as conn:
+            row = await conn.fetchrow("SELECT 1 FROM guilds WHERE guild_id = $1", guild_id)
+            if not row:
+                await conn.execute("INSERT INTO guilds (guild_id) VALUES ($1)", guild_id)
+
+    # --- bans ---
+
+    async def set_banned(self, user_id: int, blacklisted: bool) -> None:
+        await self.verify_discord_user(user_id)
+        async with self.db.acquire() as conn:
+            await conn.execute(
+                "UPDATE users SET blacklisted = $1 WHERE discord_id = $2", blacklisted, user_id
+            )
+
+    async def get_banned(self, user_id: int) -> bool:
+        await self.verify_discord_user(user_id)
+        async with self.db.acquire() as conn:
+            result = await conn.fetchrow(
+                "SELECT blacklisted FROM users WHERE discord_id = $1", user_id
+            )
+            return bool(result["blacklisted"]) if result and result["blacklisted"] else False
+
+    # --- settings (jsonb, prunes unknown keys) ---
+
+    async def get_settings(self, user_id: int, key: str | None = None) -> Any:
+        await self.verify_discord_user(user_id)
+        assert key in SETTING_DEFAULTS or key is None
+        if key:
+            key = key.lower().strip()
+        async with self.db.acquire() as conn:
+            result = await conn.fetchrow("SELECT settings FROM users WHERE discord_id = $1", user_id)
+            stuff = json.loads(result["settings"]) if result and result["settings"] else {}
+            if key:
+                return stuff.get(key, SETTING_DEFAULTS[key])
+            return {k: stuff.get(k, v) for k, v in SETTING_DEFAULTS.items()}
+
+    async def change_settings(self, user_id: int, key: str, value: Any) -> dict:
+        await self.verify_discord_user(user_id)
+        key = key.lower().strip()
+        assert key in SETTING_DEFAULTS
+        async with self.db.acquire() as conn:
+            result = await conn.fetchrow("SELECT settings FROM users WHERE discord_id = $1", user_id)
+            stuff = json.loads(result["settings"]) if result and result["settings"] else {}
+            stuff[key] = value
+            for k in list(stuff.keys()):
+                if k not in SETTING_DEFAULTS:
+                    stuff.pop(k, None)
+            await conn.execute(
+                "UPDATE users SET settings = $1 WHERE discord_id = $2", json.dumps(stuff), user_id
+            )
+            return stuff
+
+    # --- guess stats (per mode) ---
+
+    async def get_guesses(self, user_id: int, key: str | None = None) -> dict:
+        await self.verify_discord_user(user_id)
+        async with self.db.acquire() as conn:
+            result = await conn.fetchrow(
+                "SELECT guess_stats FROM users WHERE discord_id = $1", user_id
+            )
+            stuff = json.loads(result["guess_stats"]) if result and result["guess_stats"] else {}
+            return stuff.get(key, dict(GUESS_DEFAULT)) if key else stuff
+
+    async def add_guesses(self, user_id: int, key: str, stat: str) -> dict:
+        await self.verify_discord_user(user_id)
+        async with self.db.acquire() as conn:
+            result = await conn.fetchrow(
+                "SELECT guess_stats FROM users WHERE discord_id = $1", user_id
+            )
+            guess_stats = (
+                json.loads(result["guess_stats"]) if result and result["guess_stats"] else {}
+            )
+            if key not in guess_stats:
+                guess_stats[key] = dict(GUESS_DEFAULT)
+            if stat in guess_stats[key]:
+                guess_stats[key][stat] += 1
+            await conn.execute(
+                "UPDATE users SET guess_stats = $1 WHERE discord_id = $2",
+                json.dumps(guess_stats),
+                user_id,
+            )
+            return guess_stats[key]
+
+    # --- room-code rename ratelimit (persisted so the 2-per-10-min window survives restarts) ---
+
+    async def get_room_renames(self, channel_id: int) -> list[float]:
+        async with self.db.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT times FROM room_renames WHERE channel_id = $1", channel_id
+            )
+        return list(row["times"]) if row and row["times"] else []
+
+    async def set_room_renames(self, channel_id: int, times: list[float]) -> None:
+        async with self.db.acquire() as conn:
+            await conn.execute(
+                """
+                INSERT INTO room_renames (channel_id, times) VALUES ($1, $2)
+                ON CONFLICT (channel_id) DO UPDATE SET times = EXCLUDED.times
+                """,
+                channel_id,
+                times,
+            )
+
+    # --- event ranking trackers (/tracking channel subscriptions) ---
+
+    async def set_event_tracker(
+        self, channel_id: int, guild_id: int, region: str, tracking_type: int
+    ) -> None:
+        async with self.db.acquire() as conn:
+            await conn.execute(
+                """
+                INSERT INTO event_trackers (channel_id, guild_id, region, tracking_type)
+                VALUES ($1, $2, $3, $4)
+                ON CONFLICT (channel_id) DO UPDATE SET
+                    guild_id = EXCLUDED.guild_id,
+                    region = EXCLUDED.region,
+                    tracking_type = EXCLUDED.tracking_type
+                """,
+                channel_id,
+                guild_id,
+                region,
+                tracking_type,
+            )
+
+    async def remove_event_tracker(self, channel_id: int) -> bool:
+        async with self.db.acquire() as conn:
+            row = await conn.fetchrow(
+                "DELETE FROM event_trackers WHERE channel_id = $1 RETURNING channel_id", channel_id
+            )
+        return row is not None
+
+    async def list_event_trackers(self) -> list[dict]:
+        async with self.db.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT channel_id, guild_id, region, tracking_type, last_post FROM event_trackers"
+            )
+        return [dict(r) for r in rows]
+
+    async def set_tracker_last_post(self, channel_id: int, ts: float) -> None:
+        async with self.db.acquire() as conn:
+            await conn.execute(
+                "UPDATE event_trackers SET last_post = $2 WHERE channel_id = $1", channel_id, ts
+            )
+
+    # --- per tier / per user alerts (/track) ---
+
+    async def add_track_alert(
+        self,
+        guild_id: int,
+        channel_id: int,
+        user_id: int,
+        region: str,
+        event_id: str,
+        kind: str,
+        config: dict,
+    ) -> int:
+        async with self.db.acquire() as conn:
+            return await conn.fetchval(
+                """
+                INSERT INTO track_alerts
+                    (guild_id, channel_id, user_id, region, event_id, kind, config)
+                VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id
+                """,
+                guild_id,
+                channel_id,
+                user_id,
+                region,
+                event_id,
+                kind,
+                json.dumps(config),
+            )
+
+    async def list_track_alerts(self, guild_id: int | None = None) -> list[dict]:
+        async with self.db.acquire() as conn:
+            if guild_id is None:
+                rows = await conn.fetch("SELECT * FROM track_alerts ORDER BY id")
+            else:
+                rows = await conn.fetch(
+                    "SELECT * FROM track_alerts WHERE guild_id = $1 ORDER BY id", guild_id
+                )
+        out: list[dict] = []
+        for r in rows:
+            d = dict(r)
+            d["config"] = json.loads(d["config"]) if d.get("config") else {}
+            out.append(d)
+        return out
+
+    async def update_track_alert(self, alert_id: int, config: dict) -> None:
+        async with self.db.acquire() as conn:
+            await conn.execute(
+                "UPDATE track_alerts SET config = $1 WHERE id = $2", json.dumps(config), alert_id
+            )
+
+    async def remove_track_alert(self, alert_id: int) -> bool:
+        async with self.db.acquire() as conn:
+            row = await conn.fetchrow(
+                "DELETE FROM track_alerts WHERE id = $1 RETURNING id", alert_id
+            )
+        return row is not None
+
+    # --- co-op room waitlists (/waitlist) ---
+
+    async def get_waitlist(self, channel_id: int) -> dict | None:
+        async with self.db.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT guild_id, song, users, leavers, message_id, last_use "
+                "FROM waitlists WHERE channel_id = $1",
+                channel_id,
+            )
+        if row is None:
+            return None
+        d = dict(row)
+        d["users"] = list(d["users"] or [])
+        lv = d["leavers"]
+        d["leavers"] = json.loads(lv) if isinstance(lv, str) else (lv or {})
+        return d
+
+    async def save_waitlist(
+        self,
+        channel_id: int,
+        guild_id: int,
+        *,
+        song: str | None,
+        users: list[int],
+        leavers: dict,
+        message_id: int | None,
+        last_use: float,
+    ) -> None:
+        async with self.db.acquire() as conn:
+            await conn.execute(
+                """
+                INSERT INTO waitlists (channel_id, guild_id, song, users, leavers, message_id, last_use)
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                ON CONFLICT (channel_id) DO UPDATE SET
+                    guild_id = EXCLUDED.guild_id, song = EXCLUDED.song, users = EXCLUDED.users,
+                    leavers = EXCLUDED.leavers, message_id = EXCLUDED.message_id,
+                    last_use = EXCLUDED.last_use
+                """,
+                channel_id,
+                guild_id,
+                song,
+                users,
+                json.dumps(leavers),
+                message_id,
+                last_use,
+            )
+
+    async def clear_waitlist(self, channel_id: int) -> None:
+        async with self.db.acquire() as conn:
+            await conn.execute(
+                "UPDATE waitlists SET song = NULL, users = '{}', leavers = '{}', message_id = NULL "
+                "WHERE channel_id = $1",
+                channel_id,
+            )
+
+    async def remove_user_all_waitlists(self, user_id: int) -> list[int]:
+        async with self.db.acquire() as conn:
+            rows = await conn.fetch(
+                "UPDATE waitlists SET users = array_remove(users, $1) WHERE $1 = ANY(users) "
+                "RETURNING channel_id",
+                user_id,
+            )
+        return [r["channel_id"] for r in rows]
+
+    async def list_waitlists(
+        self, guild_id: int, *, song: str | None = None, since: float = 0.0
+    ) -> list[dict]:
+        async with self.db.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT channel_id, song, users, last_use FROM waitlists
+                WHERE guild_id = $1 AND last_use >= $2 AND ($3::text IS NULL OR song = $3)
+                ORDER BY last_use DESC
+                """,
+                guild_id,
+                since,
+                song,
+            )
+        out: list[dict] = []
+        for r in rows:
+            d = dict(r)
+            d["users"] = list(d["users"] or [])
+            out.append(d)
+        return out
+
+    async def get_guesses_leaderboard(self, guess_type: str, page: int):
+        per_page = GUESS_LEADERBOARD_PER_PAGE
+        total_result = await self.db.fetchval(
+            "SELECT COUNT(*) FROM users WHERE guess_stats ? $1", guess_type
+        )
+        total_pages = (total_result + per_page - 1) // per_page
+        if page > total_pages and total_pages > 0:
+            page = total_pages
+        leaderboard = await self.db.fetch(
+            f"""
+            SELECT id, discord_id,
+                guess_stats->'{guess_type}'->>'success' AS success,
+                CAST(guess_stats->'{guess_type}'->>'success' AS INT) AS score
+            FROM users WHERE guess_stats ? $1
+            ORDER BY score DESC, id ASC
+            LIMIT $2 OFFSET $3
+            """,
+            guess_type,
+            per_page,
+            (page - 1) * per_page,
+        )
+        return leaderboard, total_pages
+
+    # --- per-guild config ---
+
+    async def toggle_guessing(self, guild_id: int, enabled: bool) -> bool:
+        await self.verify_discord_guild(guild_id)
+        async with self.db.acquire() as conn:
+            result = await conn.fetchrow(
+                "UPDATE guilds SET guessing_enabled = $1 WHERE guild_id = $2 "
+                "RETURNING guessing_enabled",
+                enabled,
+                guild_id,
+            )
+            return result["guessing_enabled"] if result else True
+
+    async def guessing_enabled(self, guild_id: int) -> bool:
+        await self.verify_discord_guild(guild_id)
+        async with self.db.acquire() as conn:
+            result = await conn.fetchrow(
+                "SELECT guessing_enabled FROM guilds WHERE guild_id = $1", guild_id
+            )
+            return result["guessing_enabled"] if result else True
