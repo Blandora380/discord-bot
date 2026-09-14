@@ -3,3 +3,4 @@ requests
 PyNaCl
 yt-dlp
 python-dotenv
+google-genai
