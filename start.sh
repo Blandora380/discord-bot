@@ -1,9 +1,16 @@
 #!/bin/sh
 
-if ! command -v deno >/dev/null 2>&1; then
-    curl -fsSL https://deno.land/install.sh | sh
-fi
+set -e
 
-export PATH="$HOME/.deno/bin:$PATH"
+echo "=== install deno ==="
 
+curl -fsSL https://deno.land/install.sh | sh
+
+export PATH="/root/.deno/bin:$PATH"
+
+echo "=== cek deno ==="
+which deno
+deno --version
+
+echo "=== jalankan bot ==="
 exec python bot.py
