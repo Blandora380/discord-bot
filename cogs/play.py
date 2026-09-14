@@ -11,6 +11,10 @@ YTDL_OPTIONS = {
     "default_search": "ytsearch",
     "source_address": "0.0.0.0",
     "cookiefile": "cookies.txt",
+    "js_runtimes": {
+        "deno": {}
+    },
+    "remote_components": ["ejs:github"],
 }
 
 FFMPEG_OPTIONS = {
