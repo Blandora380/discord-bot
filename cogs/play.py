@@ -17,11 +17,6 @@ YTDL_OPTIONS = {
     "remote_components": ["ejs:github"],
 }
 
-FFMPEG_OPTIONS = {
-    "before_options": "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",
-    "options": "-vn -b:a 192k",
-}
-
 # 1.0 = normal, 1.5 = 150%, 2.0 = 200%, etc.
 VOLUME = 1.5
 
@@ -90,6 +85,23 @@ class Play(commands.Cog):
 
         stream_url = data["url"]
         title = data.get("title", "Unknown")
+
+        http_headers = data.get("http_headers", {})
+
+        headers = "".join(
+            f"{key}: {value}\r\n"
+            for key, value in http_headers.items()
+            )
+
+        FFMPEG_OPTIONS = {
+            "before_options": (
+                "-reconnect 1 "
+                "-reconnect_streamed 1 "
+                "-reconnect_delay_max 5 "
+                f'-headers "{headers}"'
+            ),
+            "options": "-vn -b:a 192k",
+        }
 
         if voice_client.is_playing():
             voice_client.stop()
