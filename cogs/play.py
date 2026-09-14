@@ -17,6 +17,11 @@ YTDL_OPTIONS = {
     "remote_components": ["ejs:github"],
 }
 
+FFMPEG_OPTIONS = {
+    "before_options": "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",
+    "options": "-vn -b:a 192k",
+}
+
 # 1.0 = normal, 1.5 = 150%, 2.0 = 200%, etc.
 VOLUME = 1.5
 
@@ -93,7 +98,7 @@ class Play(commands.Cog):
             for key, value in http_headers.items()
             )
 
-        FFMPEG_OPTIONS = {
+        play_options = {
             "before_options": (
                 "-reconnect 1 "
                 "-reconnect_streamed 1 "
@@ -110,7 +115,7 @@ class Play(commands.Cog):
             if error:
                 print(f"Player error: {error}")
 
-        source = discord.FFmpegPCMAudio(stream_url, **FFMPEG_OPTIONS)
+        source = discord.FFmpegPCMAudio(stream_url, **play_options)
         source = discord.PCMVolumeTransformer(source, volume=VOLUME)
         voice_client.play(source, after=after_playing)
 
