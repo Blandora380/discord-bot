@@ -2,3 +2,4 @@ discord.py
 requests
 PyNaCl
 yt-dlp
+python-dotenv
