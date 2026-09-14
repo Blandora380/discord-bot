@@ -4,7 +4,7 @@ import yt_dlp
 from discord.ext import commands
 
 YTDL_OPTIONS = {
-    "format": "bestaudio[ext=m4a]/bestaudio/best[height<=480]/best",
+    "format": "bestaudio/best",
     "noplaylist": True,
     "quiet": True,
     "default_search": "ytsearch",
