@@ -1,4 +1,5 @@
 import asyncio
+import os
 import discord
 import yt_dlp
 from discord.ext import commands
@@ -15,6 +16,7 @@ YTDL_OPTIONS = {
         "deno": {}
     },
     "remote_components": ["ejs:github"],
+    "outtmpl": "/tmp/%(id)s.%(ext)s",
 }
 
 FFMPEG_OPTIONS = {
@@ -22,13 +24,13 @@ FFMPEG_OPTIONS = {
     "options": "-vn -b:a 192k",
 }
 
-# 1.0 = normal, 1.5 = 150%, 2.0 = 200%, etc.
 VOLUME = 1.5
 
 print("yt-dlp:", yt_dlp.version.__version__)
 
 import shutil
 print("deno:", shutil.which("deno"))
+print("ffmpeg:", shutil.which("ffmpeg"))
 
 ytdl = yt_dlp.YoutubeDL(YTDL_OPTIONS)
 
@@ -49,64 +51,89 @@ class Play(commands.Cog):
             return
 
         query = message.content[len("!theplay"):].strip()
+
         if not query:
-            await message.channel.send("❌ Please provide a link or song title. Example: `!theplay song title` or `!theplay sc:song title` to search SoundCloud")
+            await message.channel.send(
+                "❌ Please provide a link or song title."
+            )
             return
 
-        # "sc:" prefix forces a SoundCloud search instead of the default YouTube search
         if query.lower().startswith("sc:"):
             query = "scsearch:" + query[3:].strip()
 
         member = message.author
+
         if member.voice is None or member.voice.channel is None:
-            await message.channel.send("❌ You need to join a voice channel first.")
+            await message.channel.send(
+                "❌ You need to join a voice channel first."
+            )
             return
 
         voice_channel = member.voice.channel
 
-        voice_client = discord.utils.get(self.bot.voice_clients, guild=message.guild)
+        voice_client = discord.utils.get(
+            self.bot.voice_clients,
+            guild=message.guild
+        )
+
         try:
             if voice_client is None:
                 voice_client = await voice_channel.connect()
             elif voice_client.channel != voice_channel:
                 await voice_client.move_to(voice_channel)
+
         except Exception as e:
-            await message.channel.send(f"⚠️ Failed to join voice: {e}")
+            await message.channel.send(
+                f"⚠️ Failed to join voice: {e}"
+            )
             return
 
-        await message.channel.send(f"🔎 Searching: `{query}` ...")
+        await message.channel.send(
+            f"🔎 Searching: `{query}` ..."
+        )
 
         loop = asyncio.get_event_loop()
+
         try:
+            # download audio ke file lokal
             data = await loop.run_in_executor(
-                None, lambda: ytdl.extract_info(query, download=False)
+                None,
+                lambda: ytdl.extract_info(
+                    query,
+                    download=True
+                )
             )
+
         except Exception as e:
-            await message.channel.send(f"⚠️ Failed to fetch: {e}")
+            await message.channel.send(
+                f"⚠️ Failed to download: {e}"
+            )
             return
 
         if "entries" in data:
-            data = data["entries"][0]
+            entries = data.get("entries")
 
-        stream_url = data["url"]
+            if not entries:
+                await message.channel.send(
+                    "⚠️ No results found."
+                )
+                return
+
+            data = entries[0]
+
         title = data.get("title", "Unknown")
 
-        http_headers = data.get("http_headers", {})
+        # lokasi file hasil download yt-dlp
+        file_path = ytdl.prepare_filename(data)
 
-        headers = "".join(
-            f"{key}: {value}\r\n"
-            for key, value in http_headers.items()
+        if not os.path.exists(file_path):
+            await message.channel.send(
+                "⚠️ Audio file was not found."
             )
+            print("file tidak ditemukan:", file_path)
+            return
 
-        play_options = {
-            "before_options": (
-                "-reconnect 1 "
-                "-reconnect_streamed 1 "
-                "-reconnect_delay_max 5 "
-                f'-headers "{headers}"'
-            ),
-            "options": "-vn -b:a 192k",
-        }
+        print("audio file:", file_path)
 
         if voice_client.is_playing():
             voice_client.stop()
@@ -115,11 +142,40 @@ class Play(commands.Cog):
             if error:
                 print(f"Player error: {error}")
 
-        source = discord.FFmpegPCMAudio(stream_url, **play_options)
-        source = discord.PCMVolumeTransformer(source, volume=VOLUME)
-        voice_client.play(source, after=after_playing)
+            # hapus file setelah selesai
+            try:
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+                    print("deleted:", file_path)
+            except Exception as e:
+                print("failed to delete:", e)
 
-        await message.channel.send(f"▶️ Now playing: **{title}**")
+        try:
+            source = discord.FFmpegPCMAudio(
+                file_path,
+                **FFMPEG_OPTIONS
+            )
+
+            source = discord.PCMVolumeTransformer(
+                source,
+                volume=VOLUME
+            )
+
+            voice_client.play(
+                source,
+                after=after_playing
+            )
+
+        except Exception as e:
+            await message.channel.send(
+                f"⚠️ Failed to play: {e}"
+            )
+            print("ffmpeg/play error:", repr(e))
+            return
+
+        await message.channel.send(
+            f"▶️ Now playing: **{title}**"
+        )
 
 
 async def setup(bot: commands.Bot):
