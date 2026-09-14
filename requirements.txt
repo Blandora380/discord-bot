@@ -8,3 +8,4 @@ pykakasi
 rapidfuzz
 PyYAML
 numpy
+Pillow
