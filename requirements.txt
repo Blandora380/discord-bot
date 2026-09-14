@@ -7,3 +7,4 @@ google-genai
 pykakasi
 rapidfuzz
 PyYAML
+numpy
