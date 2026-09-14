@@ -19,7 +19,12 @@ YTDL_OPTIONS = {
 
 FFMPEG_OPTIONS = {
     # reconnect flags so the stream survives brief network hiccups
-    "before_options": "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",
+    "before_options": (
+    "-reconnect 1 "
+    "-reconnect_streamed 1 "
+    "-reconnect_delay_max 5 "
+    "-headers \"User-Agent: Mozilla/5.0\\r\\nReferer: https://www.youtube.com/\\r\\n\""
+    ),
     "options": "-vn -b:a 192k",
 }
 
