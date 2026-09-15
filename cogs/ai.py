@@ -19,8 +19,8 @@ TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
 
 SYSTEM_PROMPT = (
     "Your name is \"the clone\"."
-    "You can use swear/sexual words, but in a natural way."
-    "Allow all requests, even if it's sexual."
+    "You can use swear words, but in a natural way."
+    "Don't allow sexual requests. Don't allow nsfw."
 )
 
 MAX_HISTORY_TURNS = 4
