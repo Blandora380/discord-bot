@@ -464,9 +464,33 @@ MAX_TOTAL_FILE_CHARS = 12000  # limit gabungan semua file dalam 1 pesan
 MAX_FILE_SIZE_BYTES = 500_000  # skip baca kalo file lebih gede dari ini (~500KB)
 
 
-async def build_user_content(user_text: str, attachments):
+async def build_user_content(user_text: str, attachments, stickers=None):
     file_texts = []
     image_data_urls = []
+
+    if stickers:
+        loop = asyncio.get_event_loop()
+        for sticker in stickers:
+            if getattr(sticker, "format", None) and sticker.format.value == 3:
+                file_texts.append(f"[Sticker: {sticker.name} (Lottie animation)]")
+                continue
+
+            try:
+                def fetch_sticker():
+                    resp = requests.get(sticker.url, timeout=10)
+                    resp.raise_for_status()
+                    return resp.content, resp.headers.get("content-type", "image/png")
+
+                raw, content_type = await loop.run_in_executor(None, fetch_sticker)
+                if "application/json" in content_type:
+                    file_texts.append(f"[Sticker: {sticker.name} (Lottie animation)]")
+                    continue
+                mime = content_type if content_type.startswith("image/") else "image/png"
+                b64 = base64.b64encode(raw).decode("utf-8")
+                image_data_urls.append(f"data:{mime};base64,{b64}")
+                file_texts.append(f"[Sticker: {sticker.name}]")
+            except Exception as e:
+                file_texts.append(f"[Sticker download failed for {sticker.name}: {e}]")
 
     for att in attachments:
         content_type = (att.content_type or "").lower()
@@ -556,7 +580,7 @@ class AI(commands.Cog):
             }
         ]
 
-        user_content = await build_user_content(user_text, message.attachments)
+        user_content = await build_user_content(user_text, message.attachments, message.stickers)
 
         messages.extend(history)
         messages.append(
@@ -841,7 +865,7 @@ class AI(commands.Cog):
 
     @commands.command(name="ai")
     async def ai_command(self, ctx, *, user_text: str = None):
-        if not user_text and not ctx.message.attachments:
+        if not user_text and not ctx.message.attachments and not ctx.message.stickers:
             await ctx.send("❌ Please provide a message/question. Example: `!ai what is a blackhole`")
             return
 

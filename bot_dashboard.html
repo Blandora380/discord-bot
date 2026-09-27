@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Discord Bot Analytics Dashboard</title>
+    <style>
+        :root {
+            --bg-surface: #0f172a;
+            --card-bg: #1e293b;
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --accent-primary: #38bdf8;
+            --accent-success: #34d399;
+            --accent-warning: #fbbf24;
+            --border-color: #334155;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-surface);
+            color: var(--text-primary);
+            margin: 0;
+            padding: 32px;
+            display: flex;
+            justify-content: center;
+        }
+
+        .dashboard {
+            width: 100%;
+            max-width: 1000px;
+            display: grid;
+            gap: 24px;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 16px;
+        }
+
+        h1 {
+            font-size: 24px;
+            margin: 0;
+            font-weight: 600;
+        }
+
+        .subtitle {
+            color: var(--text-secondary);
+            font-size: 14px;
+            margin-top: 4px;
+        }
+
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 16px;
+        }
+
+        .kpi-card {
+            background-color: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 20px;
+        }
+
+        .kpi-title {
+            color: var(--text-secondary);
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin: 0 0 8px 0;
+        }
+
+        .kpi-value {
+            font-size: 28px;
+            font-weight: 700;
+            margin: 0;
+            color: var(--text-primary);
+        }
+
+        .kpi-change {
+            font-size: 12px;
+            margin-top: 6px;
+            color: var(--accent-success);
+        }
+
+        .chart-container {
+            background-color: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 24px;
+        }
+
+        .chart-title {
+            font-size: 16px;
+            font-weight: 600;
+            margin: 0 0 16px 0;
+        }
+
+        .bar-chart {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .bar-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .bar-label {
+            width: 90px;
+            font-size: 13px;
+            color: var(--text-secondary);
+            text-align: right;
+        }
+
+        .bar-track {
+            flex-grow: 1;
+            background-color: #0f172a;
+            border-radius: 4px;
+            height: 24px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .bar-fill {
+            background-color: var(--accent-primary);
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.5s ease;
+        }
+
+        .bar-value {
+            position: absolute;
+            right: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard">
+        <header>
+            <div>
+                <h1>Bot Analytics</h1>
+                <div class="subtitle">Performance metrics and command usage for the past 7 days</div>
+            </div>
+            <div style="color: var(--accent-success); font-size: 14px; font-weight: 500;">🟢 Online & Operational</div>
+        </header>
+
+        <div class="kpi-grid">
+            <div class="kpi-card">
+                <p class="kpi-title">Total Commands Run</p>
+                <p class="kpi-value">14,820</p>
+                <p class="kpi-change">↑ 12% from last week</p>
+            </div>
+            <div class="kpi-card">
+                <p class="kpi-title">Active Users</p>
+                <p class="kpi-value">1,245</p>
+                <p class="kpi-change">↑ 8% from last week</p>
+            </div>
+            <div class="kpi-card">
+                <p class="kpi-title">Uptime</p>
+                <p class="kpi-value">99.98%</p>
+                <p class="kpi-change" style="color: var(--text-secondary);">Stable</p>
+            </div>
+            <div class="kpi-card">
+                <p class="kpi-title">AI Summaries Generated</p>
+                <p class="kpi-value">632</p>
+                <p class="kpi-change">↑ 24% from last week</p>
+            </div>
+        </div>
+
+        <div class="chart-container">
+            <h2 class="chart-title">Top Commands Breakdown</h2>
+            <div class="bar-chart">
+                <div class="bar-row">
+                    <span class="bar-label">/poll</span>
+                    <div class="bar-track">
+                        <div class="bar-fill" style="width: 85%; background-color: #38bdf8;"></div>
+                        <span class="bar-value">4,210</span>
+                    </div>
+                </div>
+                <div class="bar-row">
+                    <span class="bar-label">!ai</span>
+                    <div class="bar-track">
+                        <div class="bar-fill" style="width: 68%; background-color: #34d399;"></div>
+                        <span class="bar-value">3,380</span>
+                    </div>
+                </div>
+                <div class="bar-row">
+                    <span class="bar-label">/summarize</span>
+                    <div class="bar-track">
+                        <div class="bar-fill" style="width: 52%; background-color: #fbbf24;"></div>
+                        <span class="bar-value">2,590</span>
+                    </div>
+                </div>
+                <div class="bar-row">
+                    <span class="bar-label">/trivia</span>
+                    <div class="bar-track">
+                        <div class="bar-fill" style="width: 40%; background-color: #f472b6;"></div>
+                        <span class="bar-value">1,980</span>
+                    </div>
+                </div>
+                <div class="bar-row">
+                    <span class="bar-label">/play</span>
+                    <div class="bar-track">
+                        <div class="bar-fill" style="width: 25%; background-color: #a78bfa;"></div>
+                        <span class="bar-value">1,240</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
