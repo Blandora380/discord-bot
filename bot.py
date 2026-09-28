@@ -43,6 +43,7 @@ async def watch_cogs_for_changes(poll_interval: float = 2.0):
         await asyncio.sleep(poll_interval)
 
         # cek cog baru yang belum pernah di-load
+        new_cogs_loaded = False
         for cog in discover_cogs():
             if cog not in loaded_cogs:
                 try:
@@ -50,8 +51,16 @@ async def watch_cogs_for_changes(poll_interval: float = 2.0):
                     loaded_cogs.add(cog)
                     last_mtimes[cog] = os.path.getmtime(cog_path(cog))
                     print(f"✨ Auto-loaded new cog: {cog}")
+                    new_cogs_loaded = True
                 except Exception as e:
                     print(f"⚠️ Failed to auto-load {cog}: {e}")
+
+        if new_cogs_loaded:
+            try:
+                synced = await bot.tree.sync()
+                print(f"Synced {len(synced)} slash command(s)")
+            except Exception as sync_e:
+                print(f"Tree sync error: {sync_e}")
 
         # cek perubahan (atau file yang ilang) di cog yang udah ke-load
         for cog in list(loaded_cogs):

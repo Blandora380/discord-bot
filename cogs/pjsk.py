@@ -389,6 +389,7 @@ class PjskCog(commands.Cog, name="Project SEKAI"):
                 embed.add_field(name="Jacket", value="⚠️ Jacket image unavailable right now.", inline=False)
 
             # Build direct MP3 URL.
+            audio_url = None
             vocal = self._pick_vocal(music_id)
 
             if vocal:
@@ -423,8 +424,34 @@ class PjskCog(commands.Cog, name="Project SEKAI"):
                     inline=False
                 )
 
-            # Send everything in ONE Discord message.
-            await ctx.reply(embed=embed)
+            # Check if channel allows embed links
+            can_embed = True
+            if ctx.guild and hasattr(ctx.channel, "permissions_for"):
+                me = ctx.guild.me
+                if me:
+                    can_embed = ctx.channel.permissions_for(me).embed_links
+
+            if can_embed:
+                try:
+                    await ctx.reply(embed=embed)
+                    return
+                except discord.Forbidden:
+                    pass
+
+            # Fallback to plain text if embed links are missing
+            title_text = song.get('title', 'Unknown')
+            pr_text = f" *({song['pronunciation']})*" if song.get("pronunciation") else ""
+            text_lines = [
+                f"🎵 **{title_text}**{pr_text}",
+                "**Difficulty Levels:**",
+                "\n".join(level_lines) or "No data",
+            ]
+            if audio_url:
+                text_lines.append(f"🎵 **Audio MP3:** {audio_url}")
+            if jacket_url:
+                text_lines.append(jacket_url)
+
+            await ctx.reply("\n".join(text_lines))
 
     @pjsk.error
     async def pjsk_error(self, ctx: commands.Context, error):
@@ -432,7 +459,7 @@ class PjskCog(commands.Cog, name="Project SEKAI"):
             await ctx.reply("Usage: `!pjsk <song title | romaji | music ID>`")
         else:
             log.exception("pjsk command error", exc_info=error)
-            await ctx.reply("Something went wrong looking that up.")
+            await ctx.reply(f"⚠️ Error: {error}")
 
     @commands.command(
         name="pjskchart",
@@ -491,15 +518,33 @@ class PjskCog(commands.Cog, name="Project SEKAI"):
             filename = f"{song.get('title', 'chart')}_{requested_diff}.png".replace("/", "_").replace(" ", "_")
             file = discord.File(io.BytesIO(png_bytes), filename=filename)
 
-            embed = discord.Embed(
-                title=f"{song.get('title', 'Unknown')} — {DIFF_LABEL.get(requested_diff)} (Lv. {level})",
-                color=DIFF_COLOR.get(requested_diff, 0x33AADD),
-            )
-            embed.set_image(url=f"attachment://{filename}")
             avail_str = ", ".join(DIFF_LABEL[d] for d in DIFF_ORDER if d in available)
-            embed.set_footer(text=f"Available difficulties: {avail_str}")
 
-            await ctx.reply(embed=embed, file=file)
+            can_embed = True
+            if ctx.guild and hasattr(ctx.channel, "permissions_for"):
+                me = ctx.guild.me
+                if me:
+                    can_embed = ctx.channel.permissions_for(me).embed_links
+
+            if can_embed:
+                embed = discord.Embed(
+                    title=f"{song.get('title', 'Unknown')} — {DIFF_LABEL.get(requested_diff)} (Lv. {level})",
+                    color=DIFF_COLOR.get(requested_diff, 0x33AADD),
+                )
+                embed.set_image(url=f"attachment://{filename}")
+                embed.set_footer(text=f"Available difficulties: {avail_str}")
+
+                try:
+                    await ctx.reply(embed=embed, file=file)
+                    return
+                except discord.Forbidden:
+                    file.fp.seek(0)
+
+            caption = (
+                f"📊 **{song.get('title', 'Unknown')} — {DIFF_LABEL.get(requested_diff)} (Lv. {level})**\n"
+                f"Available difficulties: {avail_str}"
+            )
+            await ctx.reply(content=caption, file=file)
 
     @pjskchart.error
     async def pjskchart_error(self, ctx: commands.Context, error):
@@ -507,7 +552,7 @@ class PjskCog(commands.Cog, name="Project SEKAI"):
             await ctx.reply("Usage: `!pjskchart <song title | romaji | music ID> [difficulty]`")
         else:
             log.exception("pjskchart command error", exc_info=error)
-            await ctx.reply("Something went wrong rendering that chart.")
+            await ctx.reply(f"⚠️ Error: {error}")
 
     @commands.command(name="pjskrefresh", hidden=True)
     @commands.is_owner()
