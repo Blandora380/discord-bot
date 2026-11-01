@@ -15,6 +15,8 @@ from discord import app_commands
 from discord.ext import commands
 from pykakasi import kakasi
 
+from cogs.settings import prefix_allowed
+
 log = logging.getLogger("card_cog")
 
 CARDS_URL = "https://sekai-world.github.io/sekai-master-db-diff/cards.json"
@@ -405,7 +407,7 @@ class Card(commands.Cog):
     async def handle_card_request(self, destination, user_id: int, query: str):
         query = query.strip()
         if not query:
-            await destination.send("❌ Please provide a character name, card title, or ID. Example: `!card miku` or `!card 4`")
+            await destination.send("❌ Please provide a character name, card title, or ID. Example: `the!card miku` or `the!card 4`")
             return
 
         try:
@@ -453,9 +455,9 @@ class Card(commands.Cog):
                 await destination.send(content=text, file=file, view=view)
             else:
                 await destination.send(content=text, view=view)
-        except Exception as e:
-            log.exception(f"Error handling card request: {e}")
-            await destination.send(f"⚠️ Error loading card: {e}")
+        except Exception:
+            log.exception("Error handling card request")
+            await destination.send("⚠️ Couldn't load that card. Please try again.")
 
     @commands.command(name="card", help="Search and view Project Sekai cards")
     async def card_prefix(self, ctx: commands.Context, *, query: str = ""):
@@ -467,8 +469,11 @@ class Card(commands.Cog):
         if message.author.bot:
             return
 
+        if not prefix_allowed(message.guild):  # rule 3
+            return
+
         content = message.content.strip()
-        if not content.lower().startswith("!card"):
+        if not content.lower().startswith("the!card"):
             return
 
         # Avoid double-handling if command processor already handled it
@@ -476,7 +481,7 @@ class Card(commands.Cog):
         if ctx.valid:
             return
 
-        query = content[len("!card"):].strip()
+        query = content[len("the!card"):].strip()
         async with message.channel.typing():
             await self.handle_card_request(message.channel, message.author.id, query)
 
@@ -525,9 +530,11 @@ class Card(commands.Cog):
                 await interaction.followup.send(content=text, file=file, view=view)
             else:
                 await interaction.followup.send(content=text, view=view)
-        except Exception as e:
-            log.exception(f"Error in card_slash: {e}")
-            await interaction.followup.send(f"⚠️ Error loading card: {e}", ephemeral=True)
+        except Exception:
+            log.exception("Error in card_slash")
+            await interaction.followup.send(
+                "⚠️ Couldn't load that card. Please try again.", ephemeral=True
+            )
 
 
 async def setup(bot: commands.Bot):

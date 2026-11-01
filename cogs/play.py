@@ -1,8 +1,13 @@
 import asyncio
+import logging
 import os
 import discord
 import yt_dlp
 from discord.ext import commands
+
+from cogs.settings import prefix_allowed, voice_allowed
+
+log = logging.getLogger("play")
 
 YTDL_OPTIONS = {
     "format": "bestaudio/best",
@@ -43,13 +48,20 @@ class Play(commands.Cog):
         if message.author.bot:
             return
 
-        if not message.content.startswith("!theplay"):
+        if not prefix_allowed(message.guild) or not voice_allowed(message.guild):  # rule 3
+            return
+
+        # `the!playpigeon` also starts with `the!play`, so require the
+        # command to end there — a bare `the!play` or `the!play <query>` only.
+        cmd = "the!play"
+        content = message.content
+        if content != cmd and not content.startswith(cmd + " "):
             return
 
         if message.guild is None:
             return
 
-        query = message.content[len("!theplay"):].strip()
+        query = content[len(cmd):].strip()
 
         if not query:
             await message.channel.send(
@@ -81,9 +93,10 @@ class Play(commands.Cog):
             elif voice_client.channel != voice_channel:
                 await voice_client.move_to(voice_channel)
 
-        except Exception as e:
+        except Exception:
+            log.exception("joining voice channel failed")
             await message.channel.send(
-                f"⚠️ Failed to join voice: {e}"
+                "⚠️ Failed to join that voice channel. Please try again."
             )
             return
 
@@ -103,9 +116,11 @@ class Play(commands.Cog):
                 )
             )
 
-        except Exception as e:
+        except Exception:
+            # yt-dlp errors embed the full URL and yt's error body — log only.
+            log.exception("yt-dlp download failed")
             await message.channel.send(
-                f"⚠️ Failed to download: {e}"
+                "⚠️ Couldn't download that. Please check the link and try again."
             )
             return
 
@@ -165,11 +180,11 @@ class Play(commands.Cog):
                 after=after_playing
             )
 
-        except Exception as e:
+        except Exception:
+            log.exception("ffmpeg/play failed")
             await message.channel.send(
-                f"⚠️ Failed to play: {e}"
+                "⚠️ Couldn't play that track. Please try another one."
             )
-            print("ffmpeg/play error:", repr(e))
             return
 
         await message.channel.send(

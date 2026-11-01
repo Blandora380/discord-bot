@@ -1,6 +1,8 @@
 import discord
 from discord.ext import commands
 
+from cogs.settings import prefix_allowed, voice_allowed
+
 AUDIO_PATH = "assets/pigeon.mp3"
 
 # Ganti dengan ID voice channel tujuan (klik kanan voice channel -> Copy Channel ID)
@@ -16,7 +18,10 @@ class PlayPigeon(commands.Cog):
         if message.author.bot:
             return
 
-        if message.content != "!playpigeon":
+        if not prefix_allowed(message.guild) or not voice_allowed(message.guild):  # rule 3
+            return
+
+        if message.content != "the!playpigeon":
             return
 
         print("playpigeon triggered")

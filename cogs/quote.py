@@ -28,7 +28,7 @@ class Quote(commands.Cog):
     async def get_quote(self, ctx):
         quotes = load_quotes()
         if not quotes:
-            await ctx.send("❌ No quotes saved yet! Add one with `!addquote <message>` or attach a sticker.")
+            await ctx.send("❌ No quotes saved yet! Add one with `the!addquote <message>` or attach a sticker.")
             return
 
         item = random.choice(quotes)
@@ -58,7 +58,7 @@ class Quote(commands.Cog):
                 text = f"Sticker: {sticker.name}"
 
         if not text:
-            await ctx.send("❌ Invalid format! Example: `!addquote Hello world` or attach a sticker.")
+            await ctx.send("❌ Invalid format! Example: `the!addquote Hello world` or attach a sticker.")
             return
 
         quotes = load_quotes()
@@ -82,7 +82,7 @@ class Quote(commands.Cog):
             return
 
         count = len(quotes)
-        await ctx.send(f"📜 Total saved quotes: **{count}**. Use `!quote` to display a random quote.")
+        await ctx.send(f"📜 Total saved quotes: **{count}**. Use `the!quote` to display a random quote.")
 
 async def setup(bot):
     await bot.add_cog(Quote(bot))

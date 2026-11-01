@@ -1,7 +1,10 @@
 import re
 import asyncio
+import logging
 import discord
 from discord.ext import commands
+
+log = logging.getLogger("reminder")
 
 DURATION_RE = re.compile(
     r"(?:(\d+)d)?(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?", re.IGNORECASE
@@ -43,7 +46,8 @@ class Reminder(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    @commands.command(name="reminder")
+    # `remind`, not `reminder` — Shigure Ui already owns `reminder` (rule 4a).
+    @commands.command(name="remind")
     @commands.cooldown(1, 30, commands.BucketType.user)  # 1 use per 30s per user
     async def reminder(
         self,
@@ -54,8 +58,8 @@ class Reminder(commands.Cog):
     ):
         if not duration or not message:
             await ctx.send(
-                "❌ Usage: `!reminder <duration> <message>`\n"
-                "Example: `!reminder 30m drink water`"
+                "❌ Usage: `the!remind <duration> <message>`\n"
+                "Example: `the!remind 30m drink water`"
             )
             return
 
@@ -92,8 +96,12 @@ class Reminder(commands.Cog):
             await ctx.send(
                 f"⏳ Slow down — try again in {error.retry_after:.1f}s."
             )
+        elif isinstance(error, commands.MissingRequiredArgument):
+            await ctx.send("❌ Missing an argument. Try `the!remind 10m do the thing`.")
         else:
-            await ctx.send(f"⚠️ Error: {error}")
+            # Rule 11: never show the raw exception, it can contain paths.
+            log.exception("reminder command error")
+            await ctx.send("⚠️ Something went wrong. Please try again.")
 
 
 async def setup(bot: commands.Bot):

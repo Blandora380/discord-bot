@@ -1,8 +1,8 @@
 """
 cogs/pjsk.py
 -------------
-!pjsk <song title>                       -> replies with song name, difficulty levels, jacket, and MP3 link
-!pjskchart <title|romaji|ID> [difficulty] -> replies with a rendered chart preview image
+the!pjsk <song title>                       -> replies with song name, difficulty levels, jacket, and MP3 link
+the!pjskchart <title|romaji|ID> [difficulty] -> replies with a rendered chart preview image
 
 Data source: Sekai-World master DB mirror (community-maintained, unofficial)
   - https://sekai-world.github.io/sekai-master-db-diff/musics.json
@@ -456,19 +456,19 @@ class PjskCog(commands.Cog, name="Project SEKAI"):
     @pjsk.error
     async def pjsk_error(self, ctx: commands.Context, error):
         if isinstance(error, commands.MissingRequiredArgument):
-            await ctx.reply("Usage: `!pjsk <song title | romaji | music ID>`")
+            await ctx.reply("Usage: `the!pjsk <song title | romaji | music ID>`")
         else:
             log.exception("pjsk command error", exc_info=error)
-            await ctx.reply(f"⚠️ Error: {error}")
+            await ctx.reply("⚠️ Something went wrong running that command. Please try again.")
 
     @commands.command(
         name="pjskchart",
-        help="Chart preview image: !pjskchart <song title | romaji | music ID> [difficulty]",
+        help="Chart preview image: the!pjskchart <song title | romaji | music ID> [difficulty]",
     )
     async def pjskchart(self, ctx: commands.Context, *, query: str):
         await self._ensure_data()
 
-        # optional trailing difficulty word, e.g. "!pjskchart tell your world master"
+        # optional trailing difficulty word, e.g. "the!pjskchart tell your world master"
         parts = query.strip().split()
         requested_diff = None
         if len(parts) > 1 and parts[-1].lower() in DIFF_ORDER:
@@ -506,9 +506,11 @@ class PjskCog(commands.Cog, name="Project SEKAI"):
             if not png_bytes:
                 attempts_str = "\n".join(attempts) if attempts else "no mirrors were reachable"
                 log.warning("pjskchart: chart fetch failed for %s:\n%s", chart_path, attempts_str)
+                # Attempt detail (URLs + exception text) stays in the log only —
+                # it must not be posted to the channel (rule 11).
                 await ctx.reply(
-                    "⚠️ Couldn't fetch the chart preview right now.\n"
-                    f"Tried:\n```\n{attempts_str[:1500]}\n```"
+                    "⚠️ Couldn't fetch the chart preview right now. "
+                    "Please try again in a moment."
                 )
                 return
 
@@ -549,10 +551,10 @@ class PjskCog(commands.Cog, name="Project SEKAI"):
     @pjskchart.error
     async def pjskchart_error(self, ctx: commands.Context, error):
         if isinstance(error, commands.MissingRequiredArgument):
-            await ctx.reply("Usage: `!pjskchart <song title | romaji | music ID> [difficulty]`")
+            await ctx.reply("Usage: `the!pjskchart <song title | romaji | music ID> [difficulty]`")
         else:
             log.exception("pjskchart command error", exc_info=error)
-            await ctx.reply(f"⚠️ Error: {error}")
+            await ctx.reply("⚠️ Something went wrong running that command. Please try again.")
 
     @commands.command(name="pjskrefresh", hidden=True)
     @commands.is_owner()

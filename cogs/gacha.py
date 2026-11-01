@@ -14,6 +14,8 @@ from discord import app_commands
 from discord.ext import commands
 from PIL import Image, ImageDraw, ImageFont
 
+from cogs.settings import prefix_allowed
+
 log = logging.getLogger("gacha_cog")
 
 CARDS_URL = "https://sekai-world.github.io/sekai-master-db-diff/cards.json"
@@ -356,9 +358,9 @@ class Gacha(commands.Cog):
                     await destination.send(content=msg_text, file=file, view=view)
                 else:
                     await destination.send(content=msg_text, view=view)
-        except Exception as e:
-            log.exception(f"Error handling gacha: {e}")
-            await destination.send(f"⚠️ Error performing gacha pull: {e}")
+        except Exception:
+            log.exception("Error handling gacha")
+            await destination.send("⚠️ Gacha pull failed. Please try again.")
 
     @commands.command(name="gacha", help="Pull cards from the Project Sekai gacha simulator")
     async def gacha_prefix(self, ctx: commands.Context, pulls: int = 10):
@@ -371,8 +373,11 @@ class Gacha(commands.Cog):
         if message.author.bot:
             return
 
+        if not prefix_allowed(message.guild):  # rule 3
+            return
+
         content = message.content.strip()
-        if not content.lower().startswith("!gacha"):
+        if not content.lower().startswith("the!gacha"):
             return
 
         ctx = await self.bot.get_context(message)

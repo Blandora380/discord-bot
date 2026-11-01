@@ -1,11 +1,17 @@
 import os
+import time
 import asyncio
+import logging
 import requests
 import discord
 from discord.ext import commands
 
+from cogs.settings import ai_prefix_allowed
+
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 GEMINI_MODEL = "gemini-3.5-flash-lite"
+
+log = logging.getLogger("roast")
 
 
 def _call_gemini(prompt: str) -> str:
@@ -47,10 +53,47 @@ def _call_gemini(prompt: str) -> str:
 
 
 class Roast(commands.Cog):
+    # Rule 7: this calls a paid Gemini API and posts publicly, so it needs a
+    # per-user cooldown. Checked inside handle_roast because the command has two
+    # entry points (the registered command and the raw listener fallback) and a
+    # decorator would only cover the first.
+    COOLDOWN_S = 10.0
+
     def __init__(self, bot: commands.Bot):
         self.bot = bot
+        self._last_use: dict[int, float] = {}
 
-    async def handle_roast(self, channel, target: discord.User | discord.Member):
+    def _rate_limited(self, user_id: int) -> bool:
+        now = time.monotonic()
+        if now - self._last_use.get(user_id, 0.0) < self.COOLDOWN_S:
+            return True
+        self._last_use[user_id] = now
+        return False
+
+    async def handle_roast(
+        self,
+        channel,
+        target: discord.User | discord.Member,
+        invoker: discord.User | discord.Member,
+    ):
+        # Rule 3: AI features and text commands can each be switched off by an
+        # admin, and handle_roast is reached from both a registered prefix
+        # command and a raw listener, so the check lives here.
+        guild = getattr(channel, "guild", None)
+        if not ai_prefix_allowed(guild):
+            await channel.send(
+                "⚠️ AI features or text commands are switched off in this server."
+            )
+            return
+
+        if self._rate_limited(invoker.id):
+            await channel.send(
+                f"⏳ {invoker.mention} slow down — one roast every "
+                f"{int(self.COOLDOWN_S)}s.",
+                allowed_mentions=discord.AllowedMentions(users=True),
+            )
+            return
+
         history_lines = []
         try:
             async for msg in channel.history(limit=50):
@@ -80,8 +123,11 @@ class Roast(commands.Cog):
                 None, _call_gemini, prompt
             )
             await thinking_msg.edit(content=f"🔥 {target.mention} {roast_text}")
-        except Exception as e:
-            await thinking_msg.edit(content=f"⚠️ Failed to roast: {e}")
+        except Exception:
+            # Exception text can contain upstream error bodies — never show it
+            # in the channel (rule 11).
+            log.exception("roast failed")
+            await thinking_msg.edit(content="⚠️ Failed to roast. Please try again.")
 
     @commands.command(name="roast", help="Roast a user with AI")
     async def roast_prefix(self, ctx: commands.Context, target: discord.Member = None):
@@ -89,16 +135,19 @@ class Roast(commands.Cog):
             if ctx.message.mentions:
                 target = ctx.message.mentions[0]
             else:
-                await ctx.send("❌ Ping someone to roast! Usage: `!roast @user`")
+                await ctx.send("❌ Ping someone to roast! Usage: `the!roast @user`")
                 return
-        await self.handle_roast(ctx.channel, target)
+        await self.handle_roast(ctx.channel, target, ctx.author)
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
         if message.author.bot:
             return
 
-        if not message.content.lower().startswith("!roast"):
+        if not ai_prefix_allowed(message.guild):  # rule 3
+            return
+
+        if not message.content.lower().startswith("the!roast"):
             return
 
         ctx = await self.bot.get_context(message)
@@ -106,11 +155,11 @@ class Roast(commands.Cog):
             return
 
         if not message.mentions:
-            await message.channel.send("❌ Ping someone to roast! Usage: `!roast @user`")
+            await message.channel.send("❌ Ping someone to roast! Usage: `the!roast @user`")
             return
 
         target = message.mentions[0]
-        await self.handle_roast(message.channel, target)
+        await self.handle_roast(message.channel, target, message.author)
 
 
 async def setup(bot: commands.Bot):

@@ -2,9 +2,13 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 import asyncio
+import logging
 from typing import Optional
 
 from cogs.ai import stream_gemini, GEMINI_MODEL
+from cogs.settings import ai_allowed
+
+log = logging.getLogger("summarize")
 
 class Summarize(commands.Cog):
     def __init__(self, bot: commands.Bot):
@@ -18,7 +22,7 @@ class Summarize(commands.Cog):
         async for msg in channel.history(limit=fetch_limit, oldest_first=False):
             if invoking_msg_id and msg.id == invoking_msg_id:
                 continue
-            if msg.content and (msg.content.startswith("!summarize") or msg.content.startswith("/summarize")):
+            if msg.content and (msg.content.startswith("the!summarize") or msg.content.startswith("/summarize")):
                 continue
             if msg.author.id == self.bot.user.id and ("Summary" in msg.content or "Summarizing" in msg.content):
                 continue
@@ -57,12 +61,23 @@ class Summarize(commands.Cog):
                 if kind == "content":
                     full_text = payload
             return full_text.strip() if full_text else "⚠️ No summary generated."
-        except Exception as e:
-            return f"⚠️ Failed to generate summary: {e}"
+        except Exception:
+            # Never surface exception text to the channel (rule 11).
+            log.exception("summarize failed")
+            return "⚠️ Failed to generate a summary. Please try again."
 
     @app_commands.command(name="summarize", description="Summarize recent messages in this channel.")
     @app_commands.describe(limit="Number of recent messages to summarize (default 50, max 200)")
+    @app_commands.checks.cooldown(1, 10.0, key=lambda i: i.user.id)  # paid API (rule 7)
     async def slash_summarize(self, interaction: discord.Interaction, limit: Optional[int] = 50):
+        # Rule 3: summarize is an AI feature, so admins must be able to switch
+        # it off. Checked before deferring so the reply can be ephemeral.
+        if not ai_allowed(interaction.guild):
+            await interaction.response.send_message(
+                "⚠️ AI features are switched off in this server.", ephemeral=True
+            )
+            return
+
         await interaction.response.defer(thinking=True)
 
         if limit is None or limit < 1:
@@ -83,18 +98,23 @@ class Summarize(commands.Cog):
             await interaction.followup.send(summary)
 
     @commands.command(name="summarize")
+    @commands.cooldown(1, 10, commands.BucketType.user)  # paid API + public post (rule 7)
     async def text_summarize(self, ctx: commands.Context, limit: Optional[int] = 50):
-        """Text command version: !summarize [limit]"""
+        """Text command version: the!summarize [limit]"""
+        if not ai_allowed(ctx.guild):  # rule 3
+            await ctx.send("⚠️ AI features are switched off in this server.")
+            return
+
         if limit is None or limit < 1:
             limit = 50
         if limit > 200:
             limit = 200
 
+        # NOTE: the invoking message is deliberately NOT deleted. Deleting a
+        # message the bot didn't author needs Manage Messages, which is outside
+        # the permitted invite scope (rules 1 and 2). It is still filtered out
+        # of the summary below via invoking_msg_id.
         invoking_msg = ctx.message
-        try:
-            await invoking_msg.delete()
-        except Exception:
-            pass
 
         summary = await self._summarize_channel(ctx.channel, limit, invoking_msg_id=invoking_msg.id)
 

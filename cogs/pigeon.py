@@ -1,6 +1,8 @@
 import discord
 from discord.ext import commands
 
+from cogs.settings import prefix_allowed
+
 # Ganti teks ini sesuai yang mau dikirim
 MESSAGE_TEXT = """aa! mitsukechatta?
 nani ka okashii koto!
@@ -60,7 +62,10 @@ class Pigeon(commands.Cog):
         if message.author.bot:
             return
 
-        if message.content != "!pigeon":
+        if not prefix_allowed(message.guild):  # rule 3
+            return
+
+        if message.content != "the!pigeon":
             return
 
         files = [

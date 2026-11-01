@@ -2,6 +2,8 @@ import time
 import discord
 from discord.ext import commands
 
+from cogs.settings import prefix_allowed
+
 
 def format_uptime(seconds: float) -> str:
     seconds = int(seconds)
@@ -30,7 +32,10 @@ class Uptime(commands.Cog):
         if message.author.bot:
             return
 
-        if message.content == "!uptime":
+        if not prefix_allowed(message.guild):  # rule 3
+            return
+
+        if message.content == "the!online":
             uptime_str = format_uptime(time.time() - self.start_time)
             await message.channel.send(f"ive been online for {uptime_str} pls let me sleep")
 

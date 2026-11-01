@@ -1,3 +1,15 @@
 .env
 __pycache__/
 *.pyc
+
+# credentials — cookies.txt holds a live Google/YouTube session (rule 9)
+cookies.txt
+
+# runtime state — per-server XP and admin switches, not source
+data/levels.db
+data/levels.db-*
+data/settings.db
+data/settings.db-*
+
+# member data: quotes store author IDs + message text (rule 8)
+data/quotes.json

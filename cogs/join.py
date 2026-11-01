@@ -1,5 +1,11 @@
+import logging
+
 import discord
 from discord.ext import commands
+
+from cogs.settings import prefix_allowed, voice_allowed
+
+log = logging.getLogger("join")
 
 
 class Join(commands.Cog):
@@ -11,7 +17,10 @@ class Join(commands.Cog):
         if message.author.bot:
             return
 
-        if message.content != "!thejoin":
+        if not prefix_allowed(message.guild) or not voice_allowed(message.guild):  # rule 3
+            return
+
+        if message.content != "the!come":
             return
 
         if message.guild is None:
@@ -33,7 +42,8 @@ class Join(commands.Cog):
                 await voice_client.move_to(voice_channel)
         except Exception as e:
             print(f"JOIN ERROR: {e}")
-            await message.channel.send(f"⚠️ Join failed: {e}")
+            log.exception("joining voice channel failed")
+            await message.channel.send("⚠️ Couldn't join the voice channel. Please try again.")
             return
 
         await message.channel.send(f"hop on {voice_channel.name}")

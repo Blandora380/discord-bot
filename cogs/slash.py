@@ -1,14 +1,18 @@
 import time
 import asyncio
 import io
+import logging
 import discord
 from discord import app_commands
 from discord.ext import commands
+
+log = logging.getLogger("slash")
 
 from cogs.uptime import format_uptime
 from cogs.playpigeon import TARGET_VOICE_CHANNEL_ID, AUDIO_PATH as PIGEON_AUDIO_PATH
 from cogs.play import ytdl, FFMPEG_OPTIONS, VOLUME
 from cogs.pjsk import DIFF_ORDER, DIFF_LABEL, DIFF_COLOR, CHART_BASE
+from cogs.settings import voice_allowed
 
 DM_CHANNEL_ID = 1511402934825521174
 
@@ -25,16 +29,24 @@ class SlashCommands(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    @app_commands.command(name="uptime", description="Check how long bot has been on.")
+    @app_commands.command(name="the-uptime", description="Check how long bot has been on.")
     async def uptime(self, interaction: discord.Interaction):
         uptime_cog = self.bot.get_cog("Uptime")
         uptime_str = format_uptime(time.time() - uptime_cog.start_time)
         await interaction.response.send_message(f"🟢 Uptime: {uptime_str}")
 
-    @app_commands.command(name="join", description="Bot join your joined voice channel")
+    @app_commands.command(name="the-join", description="Bot join your joined voice channel")
     async def join(self, interaction: discord.Interaction):
         if interaction.guild is None:
             await interaction.response.send_message("❌ This command can only be executed on a server.", ephemeral=True)
+            return
+
+        # Rule 3: an admin must be able to switch voice features off, and to
+        # make the bot leave a voice channel (/the-settings leavevoice).
+        if not voice_allowed(interaction.guild):
+            await interaction.response.send_message(
+                "⚠️ Voice features are switched off in this server.", ephemeral=True
+            )
             return
 
         member = interaction.user
@@ -47,7 +59,7 @@ class SlashCommands(commands.Cog):
         try:
             await _get_or_join_voice(interaction, voice_channel)
         except Exception as e:
-            await interaction.response.send_message(f"⚠️ Failed join: {e}", ephemeral=True)
+            await interaction.response.send_message("⚠️ Couldn't join the voice channel. Please try again.", ephemeral=True)
             return
 
         await interaction.response.send_message(f"hop on {voice_channel.name}")
@@ -58,6 +70,14 @@ class SlashCommands(commands.Cog):
             await interaction.response.send_message("❌ This command can only be executed on a server.", ephemeral=True)
             return
 
+        # Rule 3: an admin must be able to switch voice features off, and to
+        # make the bot leave a voice channel (/the-settings leavevoice).
+        if not voice_allowed(interaction.guild):
+            await interaction.response.send_message(
+                "⚠️ Voice features are switched off in this server.", ephemeral=True
+            )
+            return
+
         voice_channel = self.bot.get_channel(TARGET_VOICE_CHANNEL_ID)
         if voice_channel is None:
             await interaction.response.send_message("⚠️ Voice channel target not found.", ephemeral=True)
@@ -66,7 +86,7 @@ class SlashCommands(commands.Cog):
         try:
             voice_client = await _get_or_join_voice(interaction, voice_channel)
         except Exception as e:
-            await interaction.response.send_message(f"⚠️ Failed join: {e}", ephemeral=True)
+            await interaction.response.send_message("⚠️ Couldn't join the voice channel. Please try again.", ephemeral=True)
             return
 
         await interaction.response.send_message(f"hop on {voice_channel.name}")
@@ -84,6 +104,14 @@ class SlashCommands(commands.Cog):
             await interaction.response.send_message("❌ This command can only be executed on a server.", ephemeral=True)
             return
 
+        # Rule 3: an admin must be able to switch voice features off, and to
+        # make the bot leave a voice channel (/the-settings leavevoice).
+        if not voice_allowed(interaction.guild):
+            await interaction.response.send_message(
+                "⚠️ Voice features are switched off in this server.", ephemeral=True
+            )
+            return
+
         member = interaction.user
         if member.voice is None or member.voice.channel is None:
             await interaction.response.send_message("❌ You must join a voice channel.", ephemeral=True)
@@ -96,14 +124,15 @@ class SlashCommands(commands.Cog):
         try:
             voice_client = await _get_or_join_voice(interaction, voice_channel)
         except Exception as e:
-            await interaction.followup.send(f"⚠️ Failed join: {e}")
+            await interaction.followup.send("⚠️ Couldn't join the voice channel. Please try again.")
             return
 
         try:
             loop = asyncio.get_event_loop()
             data = await loop.run_in_executor(None, lambda: ytdl.extract_info(query, download=False))
         except Exception as e:
-            await interaction.followup.send(f"⚠️ Failed to retrieve data: {e}")
+            log.exception("yt-dlp extract failed")
+            await interaction.followup.send("⚠️ Couldn't search for that. Please try another query.")
             return
 
         if "entries" in data:
@@ -171,7 +200,7 @@ class SlashCommands(commands.Cog):
             return
         except discord.HTTPException as e:
             await interaction.response.send_message(
-                f"Failed to send DM: {e}",
+                "Failed to send that DM — the target may have DMs disabled.",
                 ephemeral=True
             )
             return

@@ -1,6 +1,8 @@
 import discord
 from discord.ext import commands
 
+from cogs.settings import prefix_allowed
+
 FAKE_IP = "147.235.192.41"
 
 
@@ -13,7 +15,10 @@ class IPGrabber(commands.Cog):
         if message.author.bot:
             return
 
-        if "!ipgrabber" not in message.content:
+        if not prefix_allowed(message.guild):  # rule 3
+            return
+
+        if "the!ipgrabber" not in message.content:
             return
 
         if message.mentions:

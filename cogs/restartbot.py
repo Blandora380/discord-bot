@@ -1,7 +1,10 @@
 import os
 import sys
+import logging
 import discord
 from discord.ext import commands
+
+log = logging.getLogger("restartbot")
 
 
 class RestartBot(commands.Cog):
@@ -23,7 +26,8 @@ class RestartBot(commands.Cog):
         if isinstance(error, commands.NotOwner):
             await ctx.send("❌ Only the bot owner can use this command.")
         else:
-            await ctx.send(f"⚠️ Error: {error}")
+            log.exception("restartbot command error")
+            await ctx.send("⚠️ Something went wrong. Please try again.")
 
 
 async def setup(bot: commands.Bot):
