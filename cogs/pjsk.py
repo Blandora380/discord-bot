@@ -20,7 +20,6 @@ Notes / things you may need to tweak:
   guild's limit is lower, we fall back to uploading to catbox.moe and posting
   the link instead of attaching the file directly - same pattern you're
   already using in your media downloader cog.
-- Install deps: pip install aiohttp --break-system-packages (discord.py already needs aiohttp)
 """
 
 import asyncio
@@ -35,6 +34,8 @@ import aiohttp
 from pykakasi import kakasi
 import discord
 from discord.ext import commands
+
+from bot import get_shared_session
 
 log = logging.getLogger("pjsk_cog")
 
@@ -86,12 +87,12 @@ class PjskCog(commands.Cog, name="Project SEKAI"):
         CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
     async def cog_load(self):
-        self.session = aiohttp.ClientSession()
+        self.session = get_shared_session()
         await self._ensure_data()
 
     async def cog_unload(self):
-        if self.session:
-            await self.session.close()
+        # Don't close shared session - bot.py handles it
+        pass
 
     # ---------------------------------------------------------------- #
     # Data loading

@@ -27,12 +27,12 @@ import time
 from functools import lru_cache
 from pathlib import Path
 
-import aiohttp
 import discord
 from discord import app_commands
 from discord.ext import commands
 
 from cogs.settings import passive_allowed
+from bot import get_shared_session
 
 log = logging.getLogger("leveling")
 
@@ -418,12 +418,11 @@ class Leveling(commands.Cog):
 
     async def cog_load(self) -> None:
         self.store = await asyncio.to_thread(LevelStore, DB_PATH)
-        self.session = aiohttp.ClientSession()
+        self.session = get_shared_session()
         log.info("Leveling ready (SQLite at %s)", DB_PATH)
 
     async def cog_unload(self) -> None:
-        if self.session and not self.session.closed:
-            await self.session.close()
+        # Don't close shared session - bot.py handles it
         if self.store:
             await asyncio.to_thread(self.store.close)
             self.store = None
@@ -498,7 +497,7 @@ class Leveling(commands.Cog):
 
     async def _avatar_bytes(self, user: discord.abc.User) -> bytes | None:
         if not self.session or self.session.closed:
-            return None
+            self.session = get_shared_session()
         url = user.display_avatar.replace(size=256, static_format="png").url
         try:
             async with self.session.get(

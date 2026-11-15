@@ -8,6 +8,8 @@ import discord
 from discord.ext import commands
 from dotenv import load_dotenv
 
+from shared.cache import periodic_cache_cleanup
+
 load_dotenv()
 
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
@@ -36,6 +38,25 @@ _last_sync = 0.0
 # renames and deleted cogs trigger a sync too — without this, only newly-added
 # cog files would ever reach Discord (rule 11).
 _last_signature: tuple | None = None
+
+# Shared aiohttp session to avoid multiple connections
+_shared_session: aiohttp.ClientSession | None = None
+
+
+def get_shared_session() -> aiohttp.ClientSession:
+    """Get or create a shared aiohttp session for all cogs."""
+    global _shared_session
+    if _shared_session is None or _shared_session.closed:
+        _shared_session = aiohttp.ClientSession()
+    return _shared_session
+
+
+async def close_shared_session() -> None:
+    """Close the shared aiohttp session on bot shutdown."""
+    global _shared_session
+    if _shared_session is not None and not _shared_session.closed:
+        await _shared_session.close()
+        _shared_session = None
 
 
 def _command_signature() -> tuple:
@@ -219,8 +240,12 @@ async def main():
             print(f"Loaded cog: {cog}")
 
         bot.loop.create_task(watch_cogs_for_changes())
+        bot.loop.create_task(periodic_cache_cleanup(bot))
 
-        await bot.start(DISCORD_TOKEN)
+        try:
+            await bot.start(DISCORD_TOKEN)
+        finally:
+            await close_shared_session()
 
 if __name__ == "__main__":
     asyncio.run(main())

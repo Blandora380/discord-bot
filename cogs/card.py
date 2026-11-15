@@ -1,7 +1,6 @@
 import asyncio
 import datetime
 import io
-import json
 import logging
 import os
 import random
@@ -16,71 +15,25 @@ from discord.ext import commands
 from pykakasi import kakasi
 
 from cogs.settings import prefix_allowed
+from bot import get_shared_session
+from shared.cards import (
+    ATTR_COLORS,
+    ATTR_EMOJIS,
+    CHARACTERS as CHARACTERS_SIMPLE,
+    CHARACTERS_DETAILED,
+    RARITY_STARS,
+    card_data,
+)
 
 log = logging.getLogger("card_cog")
 
-CARDS_URL = "https://sekai-world.github.io/sekai-master-db-diff/cards.json"
-CACHE_PATH = Path("cache/pjsk/cards.json")
 CACHE_TTL = 60 * 60 * 24  # 24 hours
 IMAGE_CACHE_DIR = Path("cache/pjsk/images")
-
-CHARACTERS = {
-    1: {"name": "Ichika Hoshino", "jp": "星乃 一歌", "unit": "Leo/need", "aliases": ["ichika", "hoshino"]},
-    2: {"name": "Saki Tenma", "jp": "天馬 咲希", "unit": "Leo/need", "aliases": ["saki", "tenma saki"]},
-    3: {"name": "Honami Mochizuki", "jp": "望月 穂波", "unit": "Leo/need", "aliases": ["honami", "mochizuki", "hona"]},
-    4: {"name": "Shiho Hinomori", "jp": "日野森 志歩", "unit": "Leo/need", "aliases": ["shiho", "hinomori shiho"]},
-    5: {"name": "Minori Hanasato", "jp": "花里 みのり", "unit": "MORE MORE JUMP!", "aliases": ["minori", "hanasato"]},
-    6: {"name": "Haruka Kiritani", "jp": "桐谷 遥", "unit": "MORE MORE JUMP!", "aliases": ["haruka", "kiritani"]},
-    7: {"name": "Airi Momoi", "jp": "桃井 愛莉", "unit": "MORE MORE JUMP!", "aliases": ["airi", "momoi"]},
-    8: {"name": "Shizuku Hinomori", "jp": "日野森 雫", "unit": "MORE MORE JUMP!", "aliases": ["shizuku", "hinomori shizuku"]},
-    9: {"name": "Kohane Azusawa", "jp": "小豆沢 こはね", "unit": "Vivid BAD SQUAD", "aliases": ["kohane", "azusawa", "hamster"]},
-    10: {"name": "An Shiraishi", "jp": "白石 杏", "unit": "Vivid BAD SQUAD", "aliases": ["an", "shiraishi"]},
-    11: {"name": "Akito Shinonome", "jp": "東雲 彰人", "unit": "Vivid BAD SQUAD", "aliases": ["akito", "shinonome akito"]},
-    12: {"name": "Toya Aoyagi", "jp": "青柳 冬弥", "unit": "Vivid BAD SQUAD", "aliases": ["toya", "touya", "aoyagi"]},
-    13: {"name": "Tsukasa Tenma", "jp": "天馬 司", "unit": "Wonderlands x Showtime", "aliases": ["tsukasa", "tenma tsukasa", "star"]},
-    14: {"name": "Emu Otori", "jp": "鳳 えむ", "unit": "Wonderlands x Showtime", "aliases": ["emu", "otori", "wonderhoi"]},
-    15: {"name": "Nene Kusanagi", "jp": "草薙 寧々", "unit": "Wonderlands x Showtime", "aliases": ["nene", "kusanagi"]},
-    16: {"name": "Rui Kamishiro", "jp": "神代 類", "unit": "Wonderlands x Showtime", "aliases": ["rui", "kamishiro"]},
-    17: {"name": "Kanade Yoisaki", "jp": "宵崎 奏", "unit": "25-ji, Nightcord de.", "aliases": ["kanade", "yoisaki", "kc"]},
-    18: {"name": "Mafuyu Asahina", "jp": "朝比奈 まふゆ", "unit": "25-ji, Nightcord de.", "aliases": ["mafuyu", "asahina"]},
-    19: {"name": "Ena Shinonome", "jp": "東雲 絵名", "unit": "25-ji, Nightcord de.", "aliases": ["ena", "shinonome ena", "enanan"]},
-    20: {"name": "Mizuki Akiyama", "jp": "暁山 瑞希", "unit": "25-ji, Nightcord de.", "aliases": ["mizuki", "akiyama", "amia"]},
-    21: {"name": "Hatsune Miku", "jp": "初音ミク", "unit": "VIRTUAL SINGER", "aliases": ["miku", "hatsune miku"]},
-    22: {"name": "Kagamine Rin", "jp": "鏡音リン", "unit": "VIRTUAL SINGER", "aliases": ["rin", "kagamine rin"]},
-    23: {"name": "Kagamine Len", "jp": "鏡音レン", "unit": "VIRTUAL SINGER", "aliases": ["len", "kagamine len"]},
-    24: {"name": "Megurine Luka", "jp": "巡音ルカ", "unit": "VIRTUAL SINGER", "aliases": ["luka", "megurine luka"]},
-    25: {"name": "MEIKO", "jp": "MEIKO", "unit": "VIRTUAL SINGER", "aliases": ["meiko"]},
-    26: {"name": "KAITO", "jp": "KAITO", "unit": "VIRTUAL SINGER", "aliases": ["kaito"]},
-}
-
-ATTR_COLORS = {
-    "cool": 0x4170E8,
-    "cute": 0xFB6797,
-    "happy": 0xFFA916,
-    "mysterious": 0x935DE6,
-    "pure": 0x4BD260,
-}
-
-ATTR_EMOJIS = {
-    "cool": "🔷",
-    "cute": "🌸",
-    "happy": "☀️",
-    "mysterious": "🌙",
-    "pure": "🍀",
-}
-
-RARITY_STARS = {
-    "rarity_4": "⭐⭐⭐⭐",
-    "rarity_birthday": "🎀 Birthday",
-    "rarity_3": "⭐⭐⭐",
-    "rarity_2": "⭐⭐",
-    "rarity_1": "⭐",
-}
 
 
 def format_card_embed(card: dict, index: int, total: int, trained: bool, filename: Optional[str] = None) -> discord.Embed:
     char_id = card.get("characterId", 1)
-    char_info = CHARACTERS.get(char_id, {"name": "Unknown", "jp": "不明", "unit": "Unknown"})
+    char_info = CHARACTERS_DETAILED.get(char_id, {"name": "Unknown", "jp": "不明", "unit": "Unknown"})
     char_name = char_info["name"]
     char_jp = char_info["jp"]
     unit = char_info["unit"]
@@ -135,7 +88,7 @@ def format_card_embed(card: dict, index: int, total: int, trained: bool, filenam
 
 def format_card_text(card: dict, index: int, total: int, trained: bool) -> str:
     char_id = card.get("characterId", 1)
-    char_info = CHARACTERS.get(char_id, {"name": "Unknown", "jp": "不明", "unit": "Unknown"})
+    char_info = CHARACTERS_DETAILED.get(char_id, {"name": "Unknown", "jp": "不明", "unit": "Unknown"})
     char_name = char_info["name"]
     char_jp = char_info["jp"]
     unit = char_info["unit"]
@@ -206,8 +159,8 @@ class CardView(discord.ui.View):
         file = discord.File(fp=img_buf, filename=filename) if img_buf else None
 
         if self.use_embed:
-            embed = format_card_embed(current_card, self.index, len(self.cards), actual_trained, filename=filename if file else None)
             try:
+                embed = format_card_embed(current_card, self.index, len(self.cards), actual_trained, filename=filename if file else None)
                 if file:
                     await interaction.message.edit(content=None, embed=embed, attachments=[file], view=self)
                 else:
@@ -258,18 +211,15 @@ class Card(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.session: Optional[aiohttp.ClientSession] = None
-        self._cards: list[dict] = []
-        self._last_loaded = 0.0
-        self._init_lock = asyncio.Lock()
         self._kks = kakasi()
 
     async def cog_load(self):
-        self.session = aiohttp.ClientSession()
-        asyncio.create_task(self._ensure_cards())
+        self.session = get_shared_session()
+        asyncio.create_task(card_data.ensure_loaded())
 
     async def cog_unload(self):
-        if self.session and not self.session.closed:
-            await self.session.close()
+        # Don't close shared session here - bot.py handles it
+        pass
 
     def _romanize(self, text: str) -> str:
         try:
@@ -278,40 +228,45 @@ class Card(commands.Cog):
         except Exception:
             return text.lower()
 
-    async def _ensure_cards(self):
-        async with self._init_lock:
-            if time.time() - self._last_loaded < CACHE_TTL and self._cards:
-                return
+    async def get_card_image(self, asset: str, trained: bool) -> tuple[Optional[io.BytesIO], str]:
+        IMAGE_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        img_type = "card_after_training" if trained else "card_normal"
+        filename = f"{asset}_{img_type}.webp"
+        local_path = IMAGE_CACHE_DIR / filename
 
-            CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
-            data = None
+        if local_path.exists():
+            try:
+                data = local_path.read_bytes()
+                if len(data) > 0:
+                    return io.BytesIO(data), filename
+            except Exception as e:
+                log.warning(f"Error reading cached image {local_path}: {e}")
 
-            if CACHE_PATH.exists() and (time.time() - CACHE_PATH.stat().st_mtime < CACHE_TTL):
-                try:
-                    with open(CACHE_PATH, "r", encoding="utf-8") as f:
-                        data = json.load(f)
-                except Exception as e:
-                    log.warning(f"Error loading cached cards: {e}")
+        urls = [
+            f"https://storage.sekai.best/sekai-jp-assets/character/member/{asset}/{img_type}.webp",
+            f"https://storage.sekai.best/sekai-jp-assets/character/member_small/{asset}/{img_type}.webp",
+        ]
+        if self.session is None or self.session.closed:
+            self.session = get_shared_session()
 
-            if not data:
-                if self.session is None or self.session.closed:
-                    self.session = aiohttp.ClientSession()
-                try:
-                    async with self.session.get(CARDS_URL, timeout=aiohttp.ClientTimeout(total=30)) as resp:
-                        if resp.status == 200:
-                            data = await resp.json(content_type=None)
-                            with open(CACHE_PATH, "w", encoding="utf-8") as f:
-                                json.dump(data, f)
-                except Exception as e:
-                    log.error(f"Failed to fetch cards.json: {e}")
-                    if CACHE_PATH.exists():
-                        with open(CACHE_PATH, "r", encoding="utf-8") as f:
-                            data = json.load(f)
+        for url in urls:
+            try:
+                async with self.session.get(url, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+                    if resp.status == 200:
+                        data = await resp.read()
+                        try:
+                            local_path.write_bytes(data)
+                        except Exception:
+                            pass
+                        return io.BytesIO(data), filename
+            except Exception as e:
+                log.warning(f"Failed to fetch {url}: {e}")
 
-            if data:
-                self._cards = data
-                self._last_loaded = time.time()
-                log.info(f"Loaded {len(data)} cards for Card cog")
+        # If trained image was requested but not found (e.g. 1★ or 2★), fallback to normal
+        if trained:
+            return await self.get_card_image(asset, trained=False)
+
+        return None, filename
 
     def search_cards(self, query: str) -> list[dict]:
         query = query.strip()
@@ -325,13 +280,13 @@ class Card(commands.Cog):
         clean_id = query_l.removeprefix("id:").removeprefix("#").strip()
         if clean_id.isdigit():
             target_id = int(clean_id)
-            for c in self._cards:
+            for c in card_data.all_cards:
                 if c.get("id") == target_id:
                     return [c]
 
         # 2. Check if query matches character name / aliases
         matched_char_ids = set()
-        for cid, cinfo in CHARACTERS.items():
+        for cid, cinfo in CHARACTERS_DETAILED.items():
             if query_l in cinfo["name"].lower():
                 matched_char_ids.add(cid)
             elif query_l in cinfo["jp"]:
@@ -341,7 +296,7 @@ class Card(commands.Cog):
 
         # 3. Match cards
         matches = []
-        for c in self._cards:
+        for c in card_data.all_cards:
             cid = c.get("characterId")
             prefix = str(c.get("prefix", ""))
             prefix_l = prefix.lower()
@@ -364,46 +319,6 @@ class Card(commands.Cog):
         matches.sort(key=sort_key, reverse=True)
         return matches
 
-    async def get_card_image(self, asset: str, trained: bool) -> tuple[Optional[io.BytesIO], str]:
-        IMAGE_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        img_type = "card_after_training" if trained else "card_normal"
-        filename = f"{asset}_{img_type}.webp"
-        local_path = IMAGE_CACHE_DIR / filename
-
-        if local_path.exists():
-            try:
-                data = local_path.read_bytes()
-                if len(data) > 0:
-                    return io.BytesIO(data), filename
-            except Exception as e:
-                log.warning(f"Error reading cached image {local_path}: {e}")
-
-        urls = [
-            f"https://storage.sekai.best/sekai-jp-assets/character/member/{asset}/{img_type}.webp",
-            f"https://storage.sekai.best/sekai-jp-assets/character/member_small/{asset}/{img_type}.webp",
-        ]
-        if self.session is None or self.session.closed:
-            self.session = aiohttp.ClientSession()
-
-        for url in urls:
-            try:
-                async with self.session.get(url, timeout=aiohttp.ClientTimeout(total=15)) as resp:
-                    if resp.status == 200:
-                        data = await resp.read()
-                        try:
-                            local_path.write_bytes(data)
-                        except Exception:
-                            pass
-                        return io.BytesIO(data), filename
-            except Exception as e:
-                log.warning(f"Failed to fetch {url}: {e}")
-
-        # If trained image was requested but not found (e.g. 1★ or 2★), fallback to normal
-        if trained:
-            return await self.get_card_image(asset, trained=False)
-
-        return None, filename
-
     async def handle_card_request(self, destination, user_id: int, query: str):
         query = query.strip()
         if not query:
@@ -411,7 +326,7 @@ class Card(commands.Cog):
             return
 
         try:
-            await self._ensure_cards()
+            await card_data.ensure_loaded()
             matches = self.search_cards(query)
 
             if not matches:
@@ -490,7 +405,7 @@ class Card(commands.Cog):
     async def card_slash(self, interaction: discord.Interaction, query: str):
         await interaction.response.defer()
         try:
-            await self._ensure_cards()
+            await card_data.ensure_loaded()
             matches = self.search_cards(query)
 
             if not matches:

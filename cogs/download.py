@@ -7,6 +7,8 @@ from discord.ext import commands
 import yt_dlp
 import aiohttp
 
+from bot import get_shared_session
+
 log = logging.getLogger(__name__)
 
 DOWNLOAD_DIR = "downloads"
@@ -75,17 +77,17 @@ async def upload_to_catbox(filepath: str) -> str | None:
     filename = os.path.basename(filepath)
 
     try:
-        async with aiohttp.ClientSession() as session:
-            data = aiohttp.FormData()
-            data.add_field("reqtype", "fileupload")
-            with open(filepath, "rb") as f:
-                data.add_field("fileToUpload", f, filename=filename)
-                async with session.post(url, data=data, timeout=aiohttp.ClientTimeout(total=300)) as resp:
-                    text = await resp.text()
-                    if resp.status == 200 and text.startswith("https://"):
-                        return text.strip()
-                    log.error("catbox unexpected response (%s): %s", resp.status, text[:300])
-                    return None
+        session = get_shared_session()
+        data = aiohttp.FormData()
+        data.add_field("reqtype", "fileupload")
+        with open(filepath, "rb") as f:
+            data.add_field("fileToUpload", f, filename=filename)
+            async with session.post(url, data=data, timeout=aiohttp.ClientTimeout(total=300)) as resp:
+                text = await resp.text()
+                if resp.status == 200 and text.startswith("https://"):
+                    return text.strip()
+                log.error("catbox unexpected response (%s): %s", resp.status, text[:300])
+                return None
     except Exception:
         log.exception("catbox upload failed")
         return None

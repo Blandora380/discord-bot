@@ -8,6 +8,7 @@ import asyncio
 import logging
 import requests
 from datetime import datetime
+from collections import OrderedDict
 from google import genai
 import discord
 from discord.ext import commands
@@ -15,6 +16,7 @@ from discord.ext.commands import BucketType, CooldownMapping
 
 from helpers.prefix import COMMAND_PREFIX
 from cogs.settings import ai_allowed, ai_channel_id
+from bot import get_shared_session
 
 log = logging.getLogger("ai")
 
@@ -660,12 +662,69 @@ async def build_user_content(user_text: str, attachments, stickers=None, ref_att
 class AI(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.chat_histories = {}
+        # LRU cache for chat histories: max 500 users, each with max 8 messages (4 turns)
+        self._chat_histories: OrderedDict[int, list[dict]] = OrderedDict()
+        self._max_history_users = 500
+        self._max_history_turns = 4  # 4 turns = 8 messages (user + assistant)
+        self._history_ttl = 3600  # 1 hour TTL for inactive histories
+        self._last_cleanup = time.monotonic()
+
         # jeda 5 detik antar pesan per user (anti-spam klik cepat)
         self.cooldown_short = CooldownMapping.from_cooldown(1, 5.0, BucketType.user)
         # maksimal 10 pesan per 60 detik per user (cukup buat percakapan normal,
         # tapi nahan kalo ada yang spam banyak-banyak)
         self.cooldown_burst = CooldownMapping.from_cooldown(10, 60.0, BucketType.user)
+
+    def _get_history(self, user_id: int) -> list[dict]:
+        """Get history for user, updating LRU order. Returns empty list if expired."""
+        now = time.monotonic()
+
+        # Periodic cleanup of expired histories (every 5 minutes)
+        if now - self._last_cleanup > 300:
+            self._cleanup_expired(now)
+            self._last_cleanup = now
+
+        history = self._chat_histories.get(user_id)
+        if history is None:
+            return []
+
+        # Check TTL (we store last_access as a special key in the history)
+        last_access = history[-1].get("_last_access", 0) if history else 0
+        if now - last_access > self._history_ttl:
+            self._chat_histories.pop(user_id, None)
+            return []
+
+        # Update LRU order
+        self._chat_histories.move_to_end(user_id)
+        # Update last access time
+        if history:
+            history[-1]["_last_access"] = now
+        return history
+
+    def _set_history(self, user_id: int, history: list[dict]) -> None:
+        """Set history for user, enforcing LRU and size limits."""
+        # Enforce max users limit
+        if len(self._chat_histories) >= self._max_history_users and user_id not in self._chat_histories:
+            # Remove oldest (LRU)
+            self._chat_histories.popitem(last=False)
+
+        # Add last_access timestamp to the last message
+        if history:
+            history[-1]["_last_access"] = time.monotonic()
+
+        self._chat_histories[user_id] = history
+        self._chat_histories.move_to_end(user_id)
+
+    def _cleanup_expired(self, now: float) -> None:
+        """Remove expired histories."""
+        expired = [
+            uid for uid, hist in self._chat_histories.items()
+            if hist and (now - hist[-1].get("_last_access", 0) > self._history_ttl)
+        ]
+        for uid in expired:
+            self._chat_histories.pop(uid, None)
+        if expired:
+            log.debug(f"Cleaned up {len(expired)} expired chat histories")
 
     async def _generate_and_send_image(
         self,
@@ -704,7 +763,7 @@ class AI(commands.Cog):
 
     async def _respond(self, message, user_text, use_history: bool = True):
         user_id = message.author.id
-        history = self.chat_histories.get(user_id, []) if use_history else []
+        history = self._get_history(user_id) if use_history else []
 
         MAX_USER_TEXT = 1500
         if len(user_text) > MAX_USER_TEXT:
@@ -1040,14 +1099,15 @@ class AI(commands.Cog):
                 }
             )
 
-            self.chat_histories[user_id] = history[-(MAX_HISTORY_TURNS * 2):]
+            # Limit to max turns
+            self._set_history(user_id, history[-(self._max_history_turns * 2):])
 
     @commands.command(name="resetai")
     async def resetai(self, ctx):
         if not ai_allowed(ctx.guild):  # rule 3
             await ctx.send("⚠️ AI features are switched off in this server.")
             return
-        self.chat_histories.pop(ctx.author.id, None)
+        self._chat_histories.pop(ctx.author.id, None)
         await ctx.send(f"✅ AI chat history {ctx.author.mention} has been resetted.")
 
     @commands.command(name="model")
