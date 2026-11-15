@@ -1,4 +1,4 @@
-# the — Discord Bot
+# the clone — Discord Bot
 
 A feature-rich Discord bot with AI chat, music playback, Project Sekai gacha simulation, leveling system, and more.
 
