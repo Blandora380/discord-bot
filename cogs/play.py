@@ -21,7 +21,7 @@ YTDL_OPTIONS = {
         "deno": {}
     },
     "remote_components": ["ejs:github"],
-    "outtmpl": "/tmp/%(id)s.%(ext)s",
+    "outtmpl": "~/tmp/%(id)s.%(ext)s",
 }
 
 FFMPEG_OPTIONS = {

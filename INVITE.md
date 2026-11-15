@@ -30,10 +30,3 @@ https://discord.com/oauth2/authorize?client_id=1533399924362707056&permissions=2
 **Not requested, and deliberately so:** Administrator, Manage Server, Manage Roles,
 Manage Channels, Manage Messages, Manage Webhooks, Manage Nicknames, Kick, Ban,
 Moderate Members, Move Members, Mute Members, Deafen Members, Mention @everyone.
-
-## Consequences of the narrow scope
-
-- The bot never deletes messages a member authored. It only ever deletes its
-  own messages (`cogs/download.py`, `cogs/forward.py`'s self-destruct was removed).
-- `Manage Nicknames` is not requested, so `the!nickname` can only succeed where
-  Discord's own `Change Nickname` permission is granted to the bot by an admin.
