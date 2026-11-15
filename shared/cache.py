@@ -1,5 +1,6 @@
 """Cache management utilities to control disk/memory usage."""
 
+import asyncio
 import logging
 import time
 from pathlib import Path
