@@ -73,7 +73,7 @@ assets/                # Fonts, images for rank cards
 ```
 
 ### Key Design Rules (from code comments)
-1. **Unique prefix**: `the!` — not `!`, not `ui!`, not `/`
+1. **Unique prefix**: `the!`
 2. **No unwanted pings**: `@everyone`/`@here`/role mentions blocked globally
 3. **Admin control**: Prefix commands & AI features toggleable per-server
 4. **Slash commands exempt** from prefix toggle (controlled via Discord Integrations)
@@ -137,6 +137,3 @@ Edit any `cogs/*.py` — changes apply within ~2 seconds (no restart needed).
 - Slash commands use `@app_commands.command(name="the-...")`
 - Shared constants in `helpers/` to prevent drift
 - Database access via `services/database.py` helpers
-
-## License
-Private project — not licensed for redistribution.
